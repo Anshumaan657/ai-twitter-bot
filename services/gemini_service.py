@@ -1,28 +1,33 @@
-import google.generativeai as genai
+from google import genai
 
 from config import GEMINI_API_KEY
 from services.logger import logger
 
-# Configure Gemini API
-genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize model
-model = genai.GenerativeModel("gemini-2.5-flash")
+# Configure Gemini client
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
-def generate_text(prompt: str) -> str:
+def generate_gemini_response(prompt: str) -> str:
     """
-    Generate text using Gemini.
+    Generate response using Gemini API.
     """
 
     try:
-        response = model.generate_content(prompt)
+
+        logger.info("Sending request to Gemini")
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
 
         logger.info("Gemini response generated successfully")
 
-        return response.text.strip()
+        return response.text
 
-    except Exception as e:
-        logger.error(f"Gemini API Error: {e}")
+    except Exception as error:
+
+        logger.error(f"Gemini API Error: {error}")
 
         return "Error generating response."
