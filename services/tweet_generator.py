@@ -31,10 +31,13 @@ GOOD EXAMPLES:
 - "The most underrated AI trend is how quickly interfaces are disappearing."
 
 RULES:
-- Maximum 240 characters each
-- Each tweet must feel unique
-- Focus on implications and observations
-- Avoid simply summarizing the article
+- STRICTLY under 220 characters
+- Short punchy sentences
+- Avoid explanations
+- Avoid long setups
+- Each tweet should be one compact thought
+- No hashtags
+- No emojis
 - Output ONLY the tweets
 
 ARTICLE:
@@ -47,6 +50,23 @@ Summary:
 """
 
     return prompt
+
+
+def shorten_tweet(tweet: str, max_length: int = 240) -> str:
+    """
+    Shorten tweet if too long.
+    """
+
+    if len(tweet) <= max_length:
+
+        return tweet
+
+    shortened = tweet[:max_length]
+
+    # Clean cutoff
+    shortened = shortened.rsplit(" ", 1)[0]
+
+    return shortened + "..."
 
 
 def clean_tweets(raw_text: str) -> list[str]:
@@ -70,7 +90,9 @@ def clean_tweets(raw_text: str) -> list[str]:
 
         if len(line) > 20:
 
-            tweets.append(line)
+            shortened = shorten_tweet(line)
+
+            tweets.append(shortened)
 
     return tweets
 
