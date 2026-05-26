@@ -1,17 +1,27 @@
 import requests
+
 from config import TELEGRAM_BOT_TOKEN
 from services.logger import logger
 
-BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+
+BASE_URL = (
+    f"https://api.telegram.org/bot"
+    f"{TELEGRAM_BOT_TOKEN}"
+)
+print(BASE_URL)
 
 
 # -----------------------------
-# BASIC MESSAGE SENDER
+# SIMPLE MESSAGE
 # -----------------------------
-def send_message(chat_id: str, text: str):
+def send_message(
+    chat_id: str,
+    text: str
+):
     """
-    Send simple Telegram message.
+    Send Telegram message.
     """
+
     url = f"{BASE_URL}/sendMessage"
 
     payload = {
@@ -21,44 +31,82 @@ def send_message(chat_id: str, text: str):
     }
 
     try:
-        response = requests.post(url, json=payload)
-        return response.json()
+
+        response = requests.post(
+            url,
+            json=payload
+        )
+
+        data = response.json()
+
+        logger.info(
+            f"Telegram send_message response: {data}"
+        )
+
+        return data
 
     except Exception as e:
-        logger.error(f"Telegram send_message failed: {e}")
+
+        logger.error(
+            f"send_message failed: {e}"
+        )
+
         return None
 
 
 # -----------------------------
-# SEND TWEET FOR APPROVAL
+# SEND APPROVAL MESSAGE
 # -----------------------------
-def send_tweet_for_approval(chat_id: str, tweet: str, score: int):
+def send_tweet_for_approval(
+    chat_id: str,
+    tweet_id: int,
+    tweet: str,
+    score: int
+):
     """
-    Sends tweet with Approve / Reject buttons.
+    Send tweet for approval.
     """
 
     url = f"{BASE_URL}/sendMessage"
 
     payload = {
+
         "chat_id": chat_id,
-        "text": f"🔥 *Tweet Ready for Approval*\n\n{tweet}\n\nScore: {score}",
+
+        "text":
+        f"🔥 *Tweet Ready*\n\n"
+        f"{tweet}\n\n"
+        f"Score: {score}\n"
+        f"Tweet ID: {tweet_id}",
+
         "parse_mode": "Markdown",
+
         "reply_markup": {
+
             "inline_keyboard": [
+
                 [
                     {
                         "text": "✅ Approve",
-                        "callback_data": f"approve|{score}"
+
+                        "callback_data":
+                        f"approve:{tweet_id}"
                     },
+
                     {
                         "text": "❌ Reject",
-                        "callback_data": "reject"
+
+                        "callback_data":
+                        f"reject:{tweet_id}"
                     }
                 ],
+
                 [
                     {
                         "text": "🔁 Regenerate",
-                        "callback_data": "regen"
+
+                        "callback_data":
+                        f"regenerate:{tweet_id}"
                     }
                 ]
             ]
@@ -66,57 +114,93 @@ def send_tweet_for_approval(chat_id: str, tweet: str, score: int):
     }
 
     try:
-        response = requests.post(url, json=payload)
-        return response.json()
+
+        response = requests.post(
+            url,
+            json=payload
+        )
+
+        data = response.json()
+
+        logger.info(
+            f"Telegram approval response: {data}"
+        )
+
+        return data
 
     except Exception as e:
-        logger.error(f"Telegram send_tweet_for_approval failed: {e}")
+
+        logger.error(
+            f"approval message failed: {e}"
+        )
+
         return None
 
 
 # -----------------------------
-# FETCH UPDATES (POLLING MODE)
+# POLLING UPDATES
 # -----------------------------
-def get_updates(offset=None):
+def get_updates(
+    offset=None
+):
     """
-    Get Telegram updates (for button clicks).
+    Poll Telegram updates.
     """
 
     url = f"{BASE_URL}/getUpdates"
 
     params = {
-        "timeout": 100,
+        "timeout": 50,
         "offset": offset
     }
 
     try:
-        response = requests.get(url, params=params)
+
+        response = requests.get(
+            url,
+            params=params
+        )
+
         return response.json()
 
     except Exception as e:
-        logger.error(f"Telegram get_updates failed: {e}")
+
+        logger.error(
+            f"get_updates failed: {e}"
+        )
+
         return None
 
 
 # -----------------------------
-# HANDLE CALLBACK ACTIONS
+# CALLBACK PARSER
 # -----------------------------
-def handle_callback(callback_data: str):
+def parse_callback(
+    callback_data: str
+):
     """
-    Parse button actions.
+    Parse callback actions.
     """
 
     if not callback_data:
+
         return None
 
-    if callback_data.startswith("approve"):
-        _, score = callback_data.split("|")
-        return {"action": "approve", "score": score}
+    try:
 
-    if callback_data == "reject":
-        return {"action": "reject"}
+        action, tweet_id = (
+            callback_data.split(":")
+        )
 
-    if callback_data == "regen":
-        return {"action": "regenerate"}
+        return {
+            "action": action,
+            "tweet_id": int(tweet_id)
+        }
 
-    return {"action": "unknown"}
+    except Exception as e:
+
+        logger.error(
+            f"callback parsing failed: {e}"
+        )
+
+        return None
