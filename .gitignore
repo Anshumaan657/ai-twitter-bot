@@ -1,6 +1,7 @@
 .venv/
 .env
-__pycache__/
+**pycache**/
 *.pyc
 logs/
-data/
+data/tweets.db
+.DS_Store

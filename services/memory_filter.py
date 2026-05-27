@@ -11,7 +11,7 @@ model = SentenceTransformer(
 )
 
 
-SIMILARITY_THRESHOLD = 0.75
+SIMILARITY_THRESHOLD = 0.88
 
 
 def is_tweet_too_similar(

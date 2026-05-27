@@ -11,23 +11,31 @@ DB_PATH = Path("data/tweets.db")
 
 
 # -----------------------------
+# VALID STATES
+# -----------------------------
+VALID_STATUSES = [
+    "generated",
+    "pending",
+    "approved",
+    "rejected",
+    "posting",
+    "posted",
+    "failed"
+]
+
+
+# -----------------------------
 # CONNECTION
 # -----------------------------
 def get_connection():
-    """
-    Create SQLite connection.
-    """
 
     return sqlite3.connect(DB_PATH)
 
 
 # -----------------------------
-# INITIALIZE DATABASE
+# INIT DB
 # -----------------------------
 def initialize_database():
-    """
-    Create database tables.
-    """
 
     connection = get_connection()
 
@@ -47,7 +55,11 @@ def initialize_database():
 
             status TEXT DEFAULT 'pending',
 
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            retry_count INTEGER DEFAULT 0,
+
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            posted_at TIMESTAMP
         )
         """
     )
@@ -69,9 +81,6 @@ def save_tweet(
     article_title: str,
     score: int
 ):
-    """
-    Save generated tweet into database.
-    """
 
     connection = get_connection()
 
@@ -83,15 +92,17 @@ def save_tweet(
 
             tweet_text,
             article_title,
-            score
+            score,
+            status
 
         )
-        VALUES (?, ?, ?)
+        VALUES (?, ?, ?, ?)
         """,
         (
             tweet_text,
             article_title,
-            score
+            score,
+            "approved"
         )
     )
 
@@ -102,21 +113,22 @@ def save_tweet(
     connection.close()
 
     logger.info(
-        f"Tweet saved to database "
-        f"(ID: {tweet_id})"
+        f"Tweet saved "
+        f"(queued for posting) "
+        f"ID: {tweet_id}"
     )
 
     return tweet_id
 
 
 # -----------------------------
-# GET RECENT APPROVED TWEETS
+# GET RECENT TWEETS
 # -----------------------------
 def get_recent_tweets(
     limit: int = 20
 ) -> list[str]:
     """
-    Fetch recent APPROVED tweets only.
+    Used by memory filter.
     """
 
     connection = get_connection()
@@ -129,7 +141,10 @@ def get_recent_tweets(
 
         FROM tweets
 
-        WHERE status = 'approved'
+        WHERE status IN (
+            'approved',
+            'posted'
+        )
 
         ORDER BY created_at DESC
 
@@ -146,15 +161,47 @@ def get_recent_tweets(
 
 
 # -----------------------------
-# UPDATE TWEET STATUS
+# GET APPROVED QUEUE
 # -----------------------------
-def update_tweet_status(
-    tweet_id: int,
-    status: str
+def get_approved_tweets_for_posting(
+    limit: int = 5
 ):
-    """
-    Update tweet status.
-    """
+
+    connection = get_connection()
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            id,
+            tweet_text,
+            retry_count
+
+        FROM tweets
+
+        WHERE status = 'approved'
+
+        ORDER BY created_at ASC
+
+        LIMIT ?
+        """,
+        (limit,)
+    )
+
+    rows = cursor.fetchall()
+
+    connection.close()
+
+    return rows
+
+
+# -----------------------------
+# MARK AS POSTED
+# -----------------------------
+def mark_as_posted(
+    tweet_id: int
+):
 
     connection = get_connection()
 
@@ -163,7 +210,87 @@ def update_tweet_status(
     cursor.execute(
         """
         UPDATE tweets
+
+        SET
+            status = 'posted',
+            posted_at = CURRENT_TIMESTAMP
+
+        WHERE id = ?
+        """,
+        (tweet_id,)
+    )
+
+    connection.commit()
+
+    connection.close()
+
+    logger.info(
+        f"Tweet {tweet_id} "
+        f"marked as POSTED"
+    )
+
+
+# -----------------------------
+# MARK FAILED
+# -----------------------------
+def mark_post_failed(
+    tweet_id: int
+):
+
+    connection = get_connection()
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        UPDATE tweets
+
+        SET
+            status = 'failed',
+            retry_count = retry_count + 1
+
+        WHERE id = ?
+        """,
+        (tweet_id,)
+    )
+
+    connection.commit()
+
+    connection.close()
+
+    logger.warning(
+        f"Tweet {tweet_id} "
+        f"marked FAILED "
+        f"(retry +1)"
+    )
+
+
+# -----------------------------
+# UPDATE STATUS
+# -----------------------------
+def update_tweet_status(
+    tweet_id: int,
+    status: str
+):
+
+    if status not in VALID_STATUSES:
+
+        logger.warning(
+            f"Invalid status: {status}"
+        )
+
+        return False
+
+    connection = get_connection()
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        UPDATE tweets
+
         SET status = ?
+
         WHERE id = ?
         """,
         (
@@ -177,8 +304,10 @@ def update_tweet_status(
     connection.close()
 
     logger.info(
-        f"Tweet {tweet_id} updated to {status}"
+        f"Tweet {tweet_id} -> {status}"
     )
+
+    return True
 
 
 # -----------------------------
@@ -187,9 +316,6 @@ def update_tweet_status(
 def get_tweet_by_id(
     tweet_id: int
 ):
-    """
-    Fetch single tweet by ID.
-    """
 
     connection = get_connection()
 
@@ -211,34 +337,3 @@ def get_tweet_by_id(
     connection.close()
 
     return row
-
-
-# -----------------------------
-# GET PENDING TWEETS
-# -----------------------------
-def get_pending_tweets():
-    """
-    Fetch all pending tweets.
-    """
-
-    connection = get_connection()
-
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT id, tweet_text, score
-
-        FROM tweets
-
-        WHERE status = 'pending'
-
-        ORDER BY created_at DESC
-        """
-    )
-
-    rows = cursor.fetchall()
-
-    connection.close()
-
-    return rows

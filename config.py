@@ -19,7 +19,9 @@ TELEGRAM_BOT_TOKEN = os.getenv(
 TELEGRAM_CHAT_ID = os.getenv(
     "TELEGRAM_CHAT_ID"
 )
-
+X_BEARER_TOKEN = os.getenv(
+    "X_BEARER_TOKEN"
+)
 
 print("TOKEN:", TELEGRAM_BOT_TOKEN)
 print("CHAT ID:", TELEGRAM_CHAT_ID)

@@ -1,29 +1,16 @@
 import threading
 
 from config import TELEGRAM_CHAT_ID
-
 from services.logger import logger
 
-from services.news_fetcher import (
-    fetch_all_ai_news
-)
-
-from services.tweet_generator import (
-    generate_tweets
-)
-
-from services.tweet_validator import (
-    validate_tweet,
-    score_tweet
-)
+from services.news_fetcher import fetch_all_ai_news
+from services.tweet_generator import generate_tweets
+from services.tweet_validator import validate_tweet, score_tweet
+from services.memory_filter import is_tweet_too_similar
 
 from services.database import (
     initialize_database,
     save_tweet
-)
-
-from services.memory_filter import (
-    is_tweet_too_similar
 )
 
 from services.telegram_bot import (
@@ -31,9 +18,8 @@ from services.telegram_bot import (
     send_tweet_for_approval
 )
 
-from services.telegram_listener import (
-    start_listener
-)
+from services.telegram_listener import start_listener
+from services.posting_engine import start_posting_engine
 
 
 # -----------------------------
@@ -48,35 +34,36 @@ MIN_SCORE = 5
 # -----------------------------
 def main():
 
-    logger.info(
-        "AI Twitter Bot started"
-    )
+    logger.info("AI Twitter Bot started")
 
     # -----------------------------
-    # INITIALIZE DATABASE
+    # INIT DATABASE
     # -----------------------------
     initialize_database()
 
     # -----------------------------
     # START TELEGRAM LISTENER
     # -----------------------------
-    listener_thread = threading.Thread(
+    threading.Thread(
         target=start_listener,
         daemon=True
-    )
+    ).start()
 
-    listener_thread.start()
+    # -----------------------------
+    # START POSTING ENGINE (NEW)
+    # -----------------------------
+    threading.Thread(
+        target=start_posting_engine,
+        daemon=True
+    ).start()
 
     # -----------------------------
     # STARTUP MESSAGE
     # -----------------------------
-    startup_response = send_message(
+    send_message(
         TELEGRAM_CHAT_ID,
         "🚀 AI Twitter Bot Online"
     )
-
-    print("\nSTARTUP RESPONSE:\n")
-    print(startup_response)
 
     # -----------------------------
     # FETCH NEWS
@@ -84,28 +71,12 @@ def main():
     articles = fetch_all_ai_news()
 
     if not articles:
-
-        logger.warning(
-            "No articles found"
-        )
-
+        logger.warning("No articles found")
         return
 
-    # -----------------------------
-    # SELECT BEST ARTICLE
-    # -----------------------------
     best_article = articles[0]
 
-    print("\nBEST ARTICLE:\n")
-
-    print(best_article["title"])
-
-    print(
-        f"Score: "
-        f"{best_article['score']}"
-    )
-
-    print("-" * 60)
+    logger.info(f"Selected article: {best_article['title']}")
 
     # -----------------------------
     # GENERATE TWEETS
@@ -114,14 +85,9 @@ def main():
 
     for attempt in range(MAX_RETRIES):
 
-        logger.info(
-            f"Generation Attempt "
-            f"{attempt + 1}"
-        )
+        logger.info(f"Generation Attempt {attempt + 1}")
 
-        tweets = generate_tweets(
-            best_article
-        )
+        tweets = generate_tweets(best_article)
 
         scored_tweets.clear()
 
@@ -129,134 +95,70 @@ def main():
 
             # VALIDATION
             if not validate_tweet(tweet):
-
-                logger.warning(
-                    "Tweet rejected by validator"
-                )
-
+                logger.warning("Tweet rejected by validator")
                 continue
 
-            # MEMORY FILTER
+            # SIMILARITY FILTER
             if is_tweet_too_similar(tweet):
-
-                logger.warning(
-                    "Tweet rejected by similarity filter"
-                )
-
+                logger.warning("Tweet rejected by similarity filter")
                 continue
 
             # SCORE
             score = score_tweet(tweet)
 
-            scored_tweets.append(
-                {
-                    "tweet": tweet,
-                    "score": score
-                }
-            )
+            scored_tweets.append({
+                "tweet": tweet,
+                "score": score
+            })
 
-        # KEEP STRONG TWEETS
         strong_tweets = [
-
-            t
-            for t in scored_tweets
+            t for t in scored_tweets
             if t["score"] >= MIN_SCORE
         ]
 
         if strong_tweets:
-
             scored_tweets = strong_tweets
-
-            logger.info(
-                f"{len(scored_tweets)} "
-                f"strong tweets found"
-            )
-
+            logger.info(f"{len(scored_tweets)} strong tweets found")
             break
 
     # -----------------------------
-    # NO VALID TWEETS
+    # FAIL CASE
     # -----------------------------
     if not scored_tweets:
-
-        logger.warning(
-            "No valid tweets generated"
-        )
-
-        print("\nNo valid tweets generated\n")
-
+        logger.warning("No valid tweets generated")
         return
 
     # -----------------------------
-    # RANK TWEETS
+    # PICK BEST TWEET
     # -----------------------------
-    ranked_tweets = sorted(
-
-        scored_tweets,
-
-        key=lambda x: x["score"],
-
-        reverse=True
-    )
-
-    best_tweet = ranked_tweets[0]
+    best_tweet = max(scored_tweets, key=lambda x: x["score"])
 
     # -----------------------------
-    # SAVE TWEET
+    # SAVE TO DATABASE (QUEUE FOR POSTING ENGINE)
     # -----------------------------
     tweet_id = save_tweet(
-
         tweet_text=best_tweet["tweet"],
-
         article_title=best_article["title"],
-
         score=best_tweet["score"]
     )
 
-    logger.info(
-        f"Tweet stored with ID: "
-        f"{tweet_id}"
+    logger.info(f"Tweet queued with ID: {tweet_id}")
+
+    # -----------------------------
+    # TELEGRAM NOTIFICATION (NO CONTROL ROLE NOW)
+    # -----------------------------
+    send_tweet_for_approval(
+        chat_id=TELEGRAM_CHAT_ID,
+        tweet_id=tweet_id,
+        tweet=best_tweet["tweet"],
+        score=best_tweet["score"]
     )
 
-    # -----------------------------
-    # PRINT BEST TWEET
-    # -----------------------------
-    print("\nBEST TWEET:\n")
-
-    print(best_tweet["tweet"])
-
-    print("\nTWEET SCORE:\n")
-
-    print(best_tweet["score"])
-
-    # -----------------------------
-    # SEND TO TELEGRAM
-    # -----------------------------
-    telegram_response = (
-        send_tweet_for_approval(
-
-            chat_id=TELEGRAM_CHAT_ID,
-
-            tweet_id=tweet_id,
-
-            tweet=best_tweet["tweet"],
-
-            score=best_tweet["score"]
-        )
-    )
-
-    print("\nTELEGRAM RESPONSE:\n")
-
-    print(telegram_response)
-
-    logger.info(
-        "Pipeline completed successfully"
-    )
+    logger.info("Pipeline completed successfully")
 
 
 # -----------------------------
 # ENTRY POINT
 # -----------------------------
 if __name__ == "__main__":
-
     main()
