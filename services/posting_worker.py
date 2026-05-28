@@ -6,12 +6,12 @@ def post_to_x(tweet_text: str):
         f"SIMULATED POST:\n{tweet_text}"
     )
 
-    print("\n====================")
+    print("\n")
+    print("=" * 60)
     print("SIMULATED X POST")
-    print("====================\n")
-
+    print("=" * 60)
     print(tweet_text)
-
-    print("\n====================\n")
+    print("=" * 60)
+    print("\n")
 
     return True

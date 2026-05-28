@@ -1,39 +1,59 @@
-import requests
-from config import X_BEARER_TOKEN
+import tweepy
+from config import (
+    X_API_KEY,
+    X_API_SECRET,
+    X_ACCESS_TOKEN,
+    X_ACCESS_SECRET
+)
+
 from services.logger import logger
 
-BASE_URL = "https://api.twitter.com/2"
 
-
-def post_tweet(text: str):
-    """
-    Post tweet to X (Twitter).
-    """
-
-    url = f"{BASE_URL}/tweets"
-
-    headers = {
-        "Authorization": f"Bearer {X_BEARER_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "text": text
-    }
+# -----------------------------
+# AUTH CLIENT
+# -----------------------------
+def get_x_client():
 
     try:
-        response = requests.post(
-            url,
-            json=payload,
-            headers=headers
+
+        auth = tweepy.OAuth1UserHandler(
+            X_API_KEY,
+            X_API_SECRET,
+            X_ACCESS_TOKEN,
+            X_ACCESS_SECRET
         )
 
-        data = response.json()
+        api = tweepy.API(auth)
 
-        logger.info(f"X API response: {data}")
+        logger.info("X client initialized")
 
-        return data
+        return api
 
     except Exception as e:
-        logger.error(f"X post failed: {e}")
+
+        logger.error(f"X auth failed: {e}")
+        return None
+
+
+# -----------------------------
+# POST TWEET
+# -----------------------------
+def post_tweet(text: str):
+
+    api = get_x_client()
+
+    if not api:
+        return None
+
+    try:
+
+        response = api.update_status(text)
+
+        logger.info(f"Tweet posted: {response.id}")
+
+        return response.id
+
+    except Exception as e:
+
+        logger.error(f"Tweet post failed: {e}")
         return None
